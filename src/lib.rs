@@ -12,10 +12,6 @@
 //! The underlying [`ShadowTerminal`] is also designed to be used directly, but requires a bit
 //! more setup. See `ActiveTerminal` and `SteppableTerminal` to see how.
 
-#![expect(
-    clippy::self_named_module_files,
-    reason = "I just couldn't think of another name apart from ShadowTerminal"
-)]
 #![expect(clippy::pub_use, reason = "How else are you supposed re-export??")]
 
 pub use wezterm_term;

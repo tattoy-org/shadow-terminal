@@ -468,8 +468,6 @@ mod test {
     fn cat_earth_command() -> String {
         let cat_command = "cat";
         let path = crate::tests::helpers::workspace_dir()
-            .join("crates")
-            .join("shadow_terminal")
             .join("src")
             .join("tests")
             .join("cat_me.txt");
