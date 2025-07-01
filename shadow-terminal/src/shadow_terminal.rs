@@ -28,9 +28,10 @@ impl wezterm_term::TerminalConfiguration for WeztermConfig {
         I just really like the ability to specify config in a struct. As if it were JSON.
         I know that means projects depending on this struct run the risk of unexpected
         breakage when I add a new field. But maybe we can manage those expectations by
-        making sure that all example code is based off `ShadowTerminalConfig::default()`?
+        making sure that all example code is based off `Config::default()`?
     "
 )]
+#[derive(Clone)]
 pub struct Config {
     /// Width of terminal
     pub width: u16,
@@ -70,7 +71,7 @@ pub struct Channels {
     /// Internally generated input
     pub internal_input_tx: Option<tokio::sync::mpsc::Sender<crate::pty::BytesFromSTDIN>>,
     /// Sends complete snapshots of the current screen state.
-    shadow_output: tokio::sync::mpsc::Sender<crate::output::Output>,
+    shadow_output: tokio::sync::mpsc::Sender<crate::output::native::Output>,
 }
 
 /// Keep track of the metadata for the last sent output.
@@ -125,7 +126,7 @@ impl ShadowTerminal {
     #[inline]
     pub fn new(
         config: Config,
-        shadow_output: tokio::sync::mpsc::Sender<crate::output::Output>,
+        shadow_output: tokio::sync::mpsc::Sender<crate::output::native::Output>,
     ) -> Self {
         let (control_tx, _) = tokio::sync::broadcast::channel(64);
         let (output_tx, output_rx) = tokio::sync::mpsc::channel(1);
@@ -272,7 +273,7 @@ impl ShadowTerminal {
 
         if Self::find_subsequence(bytes, APPLICATION_MODE_START.as_bytes()).is_some() {
             tracing::trace!("Starting terminal 'application mode'");
-            crate::output::raw_string_direct_to_terminal(APPLICATION_MODE_START)
+            crate::output::native::raw_string_direct_to_terminal(APPLICATION_MODE_START)
                 .with_whatever_context(|err| {
                     format!("Sending 'application mode start' ANSI code: {err:?}")
                 })?;
@@ -280,7 +281,7 @@ impl ShadowTerminal {
 
         if Self::find_subsequence(bytes, APPLICATION_MODE_END.as_bytes()).is_some() {
             tracing::trace!("APPLICATION_MODE_END");
-            crate::output::raw_string_direct_to_terminal(APPLICATION_MODE_END)
+            crate::output::native::raw_string_direct_to_terminal(APPLICATION_MODE_END)
                 .with_whatever_context(|err| {
                     format!("Sending 'application mode end' ANSI code: {err:?}")
                 })?;
@@ -345,12 +346,13 @@ impl ShadowTerminal {
     /// Send the current state of the shadow terminal as a Termwiz surface or changeset to whoever
     /// is externally listening.
     async fn send_outputs(&mut self) -> Result<(), crate::errors::ShadowTerminalError> {
-        let screen_output = self.build_current_output(&crate::output::SurfaceKind::Screen)?;
+        let screen_output =
+            self.build_current_output(&crate::output::native::SurfaceKind::Screen)?;
         self.send_output(screen_output).await?;
 
         if !self.terminal.is_alt_screen_active() {
             let scrollback_output =
-                self.build_current_output(&crate::output::SurfaceKind::Scrollback)?;
+                self.build_current_output(&crate::output::native::SurfaceKind::Scrollback)?;
             self.send_output(scrollback_output).await?;
         }
 
@@ -374,7 +376,7 @@ impl ShadowTerminal {
     )]
     async fn send_output(
         &mut self,
-        output: crate::output::Output,
+        output: crate::output::native::Output,
     ) -> Result<(), crate::errors::ShadowTerminalError> {
         let result = self.channels.shadow_output.send(output).await;
         if let Err(error) = result {
@@ -398,7 +400,7 @@ impl ShadowTerminal {
             .control_tx
             .send(crate::Protocol::End)
             .with_whatever_context(|err| {
-                format!("Couldn't write bytes into PTY's STDIN: {err:?}")
+                format!("`ShadowTerminal.kill()`: Killing ShadowCouldn't write bytes into PTY's STDIN: {err:?}")
             })?;
 
         Ok(())
@@ -482,9 +484,8 @@ impl Drop for ShadowTerminal {
     #[inline]
     fn drop(&mut self) {
         tracing::trace!("Running ShadowTerminal.drop()");
-        let result = self.kill();
-        if let Err(error) = result {
-            tracing::error!("{error:?}");
-        }
+        self.kill().unwrap_or_else(|error| {
+            tracing::debug!("`ShadowTerminal.drop()`: {error:?}");
+        });
     }
 }

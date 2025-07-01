@@ -1,0 +1,36 @@
+[package]
+name = "shadow-terminal-cli"
+description = "A headless modern terminal emulator"
+version = "0.1.0"
+edition = "2021"
+readme = "../README.md"
+repository = "https://github.com/tattoy-org/shadow-terminal"
+documentation = "https://docs.rs/shadow-terminal"
+license = "MIT"
+keywords = ["shell", "testing"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[[bin]]
+name = "shadow-terminal"
+path = "src/main.rs"
+
+[dependencies]
+schemars.workspace = true
+serde_json = "1.0.140"
+serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+color-eyre = "0.6.5"
+clap = { version = "4.5.40", features = ["derive", "env"] }
+
+[dependencies.shadow-terminal]
+version = "0.1.1"
+path = "../shadow-terminal"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+assert_cmd = "2.0.17"
+predicates = "3.1.3"

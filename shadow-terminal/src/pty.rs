@@ -1,4 +1,5 @@
 //! Creates a PTY in an OS subprocess and sends and recieves bytes to/from it over channels.
+//!
 //! It doesn't actually maintain a visual representation, that requires the [`Wezterm`] terminal
 //! to parse the PTY's output, see: [`ShadowTerminal`].
 
@@ -16,7 +17,7 @@ pub type BytesFromSTDIN = [u8; 128];
 
 /// This is the PTY process that replaces the user's current TTY
 #[non_exhaustive]
-pub struct PTY {
+pub(crate) struct PTY {
     /// PTY starting command
     pub command: Vec<OsString>,
     /// PTY width
@@ -165,7 +166,7 @@ impl PTY {
     }
 
     /// Start the PTY
-    pub async fn run(
+    pub(crate) async fn run(
         self,
         user_input_rx: mpsc::Receiver<BytesFromSTDIN>,
         internal_input_rx: mpsc::Receiver<BytesFromSTDIN>,
@@ -348,7 +349,7 @@ impl PTY {
         pty_stdin
             .write_all(byte_slice)
             .with_whatever_context(|err| {
-                format!("Couldn't write bytes into PTY's STDIN: {err:?}")
+                format!("`handle_input_bytes()`: couldn't write bytes into PTY's STDIN: {err:?}")
             })?;
         pty_stdin
             .flush()
@@ -371,7 +372,7 @@ impl PTY {
     }
 
     /// Insert bytes into a buffer.
-    pub fn add_bytes_to_buffer(
+    pub(crate) fn add_bytes_to_buffer(
         buffer: &mut BytesFromSTDIN,
         bytes: &[u8],
     ) -> Result<(), crate::errors::PTYError> {
@@ -468,6 +469,7 @@ mod test {
     fn cat_earth_command() -> String {
         let cat_command = "cat";
         let path = crate::tests::helpers::workspace_dir()
+            .join("shadow-terminal")
             .join("src")
             .join("tests")
             .join("cat_me.txt");
