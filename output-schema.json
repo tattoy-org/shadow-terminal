@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Output",
+  "description": "The parent type for all output",
+  "type": "object",
+  "properties": {
+    "cells": {
+      "description": "A 1D array of all the cells in the shadow terminal's screen.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Cell"
+      }
+    },
+    "cursor": {
+      "description": "The shadow terminal's cursor state.",
+      "$ref": "#/$defs/Cursor"
+    },
+    "height": {
+      "description": "The shadow terminal's height.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    },
+    "mode": {
+      "description": "Whether the terminal is in the primary (scrolling) mode or the alternate mode.",
+      "$ref": "#/$defs/ScreenMode"
+    },
+    "title": {
+      "description": "The title of the terminal.",
+      "type": "string"
+    },
+    "width": {
+      "description": "The shadow terminal's width.",
+      "type": "integer",
+      "format": "uint",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "width",
+    "height",
+    "cells",
+    "cursor",
+    "title",
+    "mode"
+  ],
+  "$defs": {
+    "Cell": {
+      "description": "An individual cell in the shadow terminal's screen.",
+      "type": "object",
+      "properties": {
+        "background": {
+          "description": "The background colour of the cell.",
+          "$ref": "#/$defs/Color"
+        },
+        "foreground": {
+          "description": "The foreground colour of the cell.",
+          "$ref": "#/$defs/Color"
+        },
+        "text": {
+          "description": "The text contents of the cell.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "foreground",
+        "background"
+      ]
+    },
+    "Color": {
+      "description": "The colour of a cell's foreground or background.",
+      "oneOf": [
+        {
+          "description": "The colour is the default foreground or background colour.",
+          "type": "string",
+          "const": "Default"
+        },
+        {
+          "description": "The colour is from the terminal's palette.",
+          "type": "object",
+          "properties": {
+            "PaletteIndex": {
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "PaletteIndex"
+          ]
+        },
+        {
+          "description": "A true RGB colour.",
+          "type": "object",
+          "properties": {
+            "TrueColor": {
+              "type": "array",
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number",
+                  "format": "float"
+                },
+                {
+                  "type": "number",
+                  "format": "float"
+                },
+                {
+                  "type": "number",
+                  "format": "float"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "TrueColor"
+          ]
+        }
+      ]
+    },
+    "Cursor": {
+      "description": "An individual cell in the shadow terminal's screen.",
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "Position of the cursor. 0-indexed. `0,0` is in the top-left.",
+          "type": "array",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          ]
+        },
+        "shape": {
+          "description": "The shape of the cursor, and if it's blinking or not.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorShape"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visibility": {
+          "description": "Whether the cursor is visible or hidden.",
+          "$ref": "#/$defs/CursorVisibility"
+        }
+      },
+      "required": [
+        "position",
+        "visibility"
+      ]
+    },
+    "CursorShape": {
+      "type": "string",
+      "enum": [
+        "Default",
+        "BlinkingBlock",
+        "SteadyBlock",
+        "BlinkingUnderline",
+        "SteadyUnderline",
+        "BlinkingBar",
+        "SteadyBar"
+      ]
+    },
+    "CursorVisibility": {
+      "type": "string",
+      "enum": [
+        "Hidden",
+        "Visible"
+      ]
+    },
+    "ScreenMode": {
+      "description": "The mode of the terminal screen, therefore either the primary screen, where the scrollback is\ncollected, or the alternate screen, where apps like `vim`, `htop`, etc, get rendered.",
+      "oneOf": [
+        {
+          "description": "The typical REPL mode of the terminal. Also can be thought of as a view onto the bottom of\nthe scrollback.",
+          "type": "string",
+          "const": "Primary"
+        },
+        {
+          "description": "The so-called \"alternate\" screen where apps like `vim`, `htop`, etc, get displayed.",
+          "type": "string",
+          "const": "Alternate"
+        }
+      ]
+    }
+  }
+}

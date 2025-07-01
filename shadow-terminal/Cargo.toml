@@ -1,0 +1,34 @@
+[package]
+name = "shadow-terminal"
+description = "A headless modern terminal emulator"
+version = "0.1.1"
+edition = "2021"
+readme = "../README.md"
+repository = "https://github.com/tattoy-org/shadow-terminal"
+documentation = "https://docs.rs/shadow-terminal"
+license = "MIT"
+keywords = ["shell", "testing"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[dependencies]
+portable-pty = "0.8.1"
+serde.workspace = true
+snafu = "0.8.6"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+schemars.workspace = true
+
+[dependencies.termwiz]
+package = "tattoy-termwiz"
+features = ["use_serde"]
+version = "=0.24.0-fork.1"
+# path = "../../wezterm/termwiz"
+
+[dependencies.wezterm-term]
+package = "tattoy-wezterm-term"
+version = "=0.1.0-fork.4"
+# path = "../../wezterm/term"
+
+[lints]
+workspace = true

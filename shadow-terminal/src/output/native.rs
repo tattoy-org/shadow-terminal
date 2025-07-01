@@ -1,4 +1,5 @@
-//! Sending terminal output to end users.
+//! Sending terminal output to end users. This "native" output is more useful when used directly
+//! with Rust (as opposed to FFI users or STDOUT users).
 //!
 //! We try to be efficient in how we send output. If the change from the underlying PTY is small,
 //! then we just send diffs. Otherwise we send the entire screen or scrollback buffer.
@@ -31,7 +32,9 @@ pub fn raw_string_direct_to_terminal(
 
 /// The mode of the terminal screen, therefore either the primary screen, where the scrollback is
 /// collected, or the alternate screen, where apps like `vim`, `htop`, etc, get rendered.
-#[derive(Clone, Debug, Default)]
+#[derive(
+    Clone, Debug, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema, Eq, PartialEq,
+)]
 #[non_exhaustive]
 pub enum ScreenMode {
     /// The typical REPL mode of the terminal. Also can be thought of as a view onto the bottom of
@@ -161,6 +164,18 @@ pub struct CompleteScreen {
     pub surface: termwiz::surface::Surface,
     /// Whether the terminal is in primary or alternate mode.
     pub mode: ScreenMode,
+}
+
+impl CompleteScreen {
+    /// Instantiate an empty `CompleteScreen`.
+    #[inline]
+    #[must_use]
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            surface: termwiz::surface::Surface::new(width, height),
+            mode: ScreenMode::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

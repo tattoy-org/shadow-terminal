@@ -1,23 +1,96 @@
 # Shadow Terminal
-A fully-functional, fully-rendered terminal purely in memory.
+A fully-functional, fully-rendered terminal emulator in memory.
 
-Useful for terminal multiplexers (a la `tmux`, `zellij`) and end to end testing TUI applications.
+If you're aware of headless browsers then Shadow Terminal is just like that, but for terminals. Similarly, Shadow Terminal can be used for End To End testing TUI applications. But it can also be used as a basis for making terminal multiplexers (a la `tmux`, `zellij`).
 
-Making a live terminal that automatically updates as you send it input and as any programs running in it send output.
-```rust
-let config = ShadowTerminalConfig::default();
-let active_terminal = shadow_terminal::active_terminal::ActiveTerminal::start(config);
-active_terminal.send_input(forwarded_stdin_bytes);
-let surface = shadow_terminal.surface_output_rx.recv().await;
-dbg!(surface);
+Existing tools for testing CLI apps, like Python's [`pexpect`](https://github.com/pexpect/pexpect), generally only work at the PTY level, meaning they don't fully parse and handle all ANSI codes. For example a PTY doesn't maintain a grid of cells into which you can query. Shadow Terminal on the other hand can render applications like `top` and `vim` whilst providing a convenient API to get all the attribute details of each cell, like true colour values, etc.
+
+The underlying terminal is Wezterm's [`wezterm-term`](https://github.com/wezterm/wezterm/tree/main/term), which is the core of the Wezterm GUI terminal emulator. So anything that Wezterm can do Shadow Terminal should also be able to do.
+
+## Usage
+
+### `shadow-terminal` CLI
+
+The `shadow-terminal` CLI starts a headless terminal running an arbitrary command. It can even start interactive commands like `bash`, forwarding the user's STDIN to the underlying terminal. Though note that it doesn't automatically put your own terminal into "raw" mode, which means that all input is buffered and only forwarded when sending a newline (like when pressing the Enter key). This limitation does not exist when running `shadow-terminal` as a subprocess from some other code.
+
+By default the underlying terminal's output is sent to STDOUT as rich JSON object. A new object is sent for every change to the underlying terminal. The structure of this JSON can be found in the [JSON schema](/output-schema.json) at the root of this repo.
+
+You may also render the output as plain text. This most likely is only useful for quick debugging.
+
+Roadmap:
+* [ ] Support sending the resize and scrolling triggers.
+* [ ] Support outputting the scrollback buffer.
+
+Here are the full usage details:
+```
+Usage: shadow-terminal [OPTIONS] [COMMAND]...
+
+Arguments:
+  [COMMAND]...
+          The command to run in the shadow terminal
+
+          [env: SHELL=/usr/bin/fish]
+          [default: bash]
+
+Options:
+      --width <WIDTH>
+          The width of the shadow terminal
+
+      --height <HEIGHT>
+          The height of the shadow terminal
+
+      --scrollback-size <SCROLLBACK_SIZE>
+          The number of lines for the shadow terminal's scrollback buffer
+
+          [default: 1000]
+
+      --output <OUTPUT>
+          The format to return the output of the shadow terminal
+
+          [default: json]
+
+          Possible values:
+          - json:  A rich and structured representation of all the cells' data
+          - plain: Just a plain, monochrome format useful for debugging
+
+      --generate-schema
+          Generate the current JSON schema for serialised output
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
 ```
 
-An example of a basic end to end test using the `SteppableTerminal`.
+### Rust crate
+
+Shadow Terminal has 2 modes of running: `ActiveTerminal` and `SteppableTerminal`.
+
+Full docs are available at: https://docs.rs/shadow-terminal/latest/shadow_terminal
+
+#### `ActiveTerminal`
+
+This is more useful for realtime applications such as terminal multiplexers for example.
+
 ```rust
-let config = ShadowTerminalConfig::default();
-let mut stepper = SteppableTerminal::start(config).await.unwrap();
-stepper.send_string("echo $((1+1))\n").unwrap();
-stepper.wait_for_change().await.unwrap();
+let shadow_terminal = ActiveTerminal::start(Config::default());
+forward_stdin(shadow_terminal.pty_input_tx.clone());
+while let Some(output) = shadow_terminal.surface_output_rx.recv().await {
+    // ...
+    dbg!(surface);
+}
+```
+
+#### `SteppableTerminal`
+
+This is more useful for E2E testing. The underlying terminal doesn't automatically parse the output
+from its PTY. This allows for conveniently stepping through the state of the run command.
+
+```rust
+let mut stepper = SteppableTerminal::start(Config::default()).await.unwrap();
+stepper.send_command("echo $((1+1))").unwrap();
+stepper.wait_for_any_change().await.unwrap();
 let output = stepper.screen_as_string().unwrap();
 assert_eq!(
     output,
@@ -29,15 +102,9 @@ assert_eq!(
 );
 ```
 
-## Testing
-* End to end tests depend on `nano` (to help text resizing the terminal).
+### C-compatible library
 
-## TODO
-* [ ] Every test has to be marked with `#[tokio::test(flavor = "multi_thread")]` otherwise tests can hang. I'm not sure why, I'd really like to know.
-* [ ] If `#[tokio::test(flavor = "multi_thread")]` is really necessary it'd be nice if there was a way to globally set it for tests.
+Coming soon...
 
-
-## Notes
-* Useful ANSI code resources:
-  * https://gist.github.com/ConnerWill/d4b6c776b509add763e17f9f113fd25b
-  * https://www.qnx.com/developers/docs/qnx_4.25_docs/qnx4/utils/d/devansi.html
+## Project currently using Shadow Terminal
+* [Tattoy](https://tattoy.sh) uses the Shadow Terminal both for rendering compositing effects and for E2E tetsing.

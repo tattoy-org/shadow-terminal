@@ -1,32 +1,16 @@
-[package]
-name = "shadow-terminal"
-description = "A headless modern terminal emulator"
-version = "0.1.1"
-edition = "2021"
-readme = "README.md"
-repository = "https://github.com/tattoy-org/shadow-terminal"
-documentation = "https://docs.rs/shadow-terminal"
-license = "MIT"
-keywords = ["shell", "testing"]
-categories = ["command-line-utilities", "development-tools::testing"]
+[workspace]
+resolver = "2"
+members = [
+		"shadow-terminal-cli",
+    "shadow-terminal",
+]
 
-[dependencies]
-portable-pty = "0.8.1"
-snafu = "0.8.6"
+[workspace.dependencies]
+schemars = "1.0.3"
+serde = "1.0.219"
 tracing = "0.1.41"
 tracing-subscriber = {version = "0.3.19", features = ["env-filter"]}
 tokio = { version = "1.45.1", features = ["full", "tracing"] }
-
-[dependencies.termwiz]
-package = "tattoy-termwiz"
-features = ["use_serde"]
-version = "0.24.0-fork"
-# path = "../wezterm/termwiz"
-
-[dependencies.wezterm-term]
-package = "tattoy-wezterm-term"
-version = "0.1.0-fork.3"
-# path = "../../../wezterm/term"
 
 # Canonical lints for whole crate
 #
@@ -38,11 +22,11 @@ version = "0.1.0-fork.3"
 # We set base lints to give the fullest, most pedantic feedback possible.
 # Though we prefer that they are just warnings during development so that build-denial
 # is only enforced in CI.
-[lints.rust]
+[workspace.lints.rust]
 # It's always good to write as much documentation as possible
 missing_docs = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 # `clippy::all` is already on by default. It implies the following:
 #   * clippy::correctness code that is outright wrong or useless
 #   * clippy::suspicious code that is most likely wrong or useless
@@ -99,3 +83,4 @@ non_ascii_literal = "allow"
 std_instead_of_alloc = "allow"
 std_instead_of_core = "allow"
 float_arithmetic = "allow"
+
