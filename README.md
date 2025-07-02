@@ -11,6 +11,8 @@ The underlying terminal is Wezterm's [`wezterm-term`](https://github.com/wezterm
 
 ### `shadow-terminal` CLI
 
+Pre-built binaries for Linux, Mac OS and Windows are available in our Github [Releases](https://github.com/tattoy-org/shadow-terminal/releases).
+
 The `shadow-terminal` CLI starts a headless terminal running an arbitrary command. It can even start interactive commands like `bash`, forwarding the user's STDIN to the underlying terminal. Though note that it doesn't automatically put your own terminal into "raw" mode, which means that all input is buffered and only forwarded when sending a newline (like when pressing the Enter key). This limitation does not exist when running `shadow-terminal` as a subprocess from some other code.
 
 By default the underlying terminal's output is sent to STDOUT as rich JSON object. A new object is sent for every change to the underlying terminal. The structure of this JSON can be found in the [JSON schema](/output-schema.json) at the root of this repo.
