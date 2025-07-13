@@ -110,3 +110,9 @@ Coming soon...
 
 ## Project currently using Shadow Terminal
 * [Tattoy](https://tattoy.sh) uses the Shadow Terminal both for rendering compositing effects and for E2E tetsing.
+
+### Similar Projects
+* https://github.com/gdamore/tcell (Golang, more similar in scope to https://github.com/ratatui/ratatui)
+* https://github.com/pexpect/pexpect (Python, with various bindings to other languages)
+* https://github.com/rust-cli/rexpect
+* https://github.com/doy/vt100-rust
