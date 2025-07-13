@@ -1,7 +1,7 @@
 [package]
 name = "shadow-terminal"
 description = "A headless modern terminal emulator"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 readme = "../README.md"
 repository = "https://github.com/tattoy-org/shadow-terminal"
@@ -22,12 +22,12 @@ schemars.workspace = true
 [dependencies.termwiz]
 package = "tattoy-termwiz"
 features = ["use_serde"]
-version = "=0.24.0-fork.1"
+version = "=0.24.0-fork.2"
 # path = "../../wezterm/termwiz"
 
 [dependencies.wezterm-term]
 package = "tattoy-wezterm-term"
-version = "=0.1.0-fork.4"
+version = "=0.1.0-fork.5"
 # path = "../../wezterm/term"
 
 [lints]
