@@ -1951,7 +1951,7 @@ dependencies = [
 
 [[package]]
 name = "shadow-terminal"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "portable-pty",
  "schemars",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "shadow-terminal-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "assert_cmd",
  "clap",
