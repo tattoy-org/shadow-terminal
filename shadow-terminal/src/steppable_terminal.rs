@@ -486,7 +486,7 @@ impl SteppableTerminal {
             self.render_all_output()
                 .await
                 .with_whatever_context(|err| format!("Couldn't render output: {err:?}"))?;
-            let found_string = self.get_string_at(x, y, string_to_find.len())?;
+            let found_string = self.get_string_at(x, y, string_to_find.chars().count())?;
             if found_string == string_to_find {
                 break;
             }
