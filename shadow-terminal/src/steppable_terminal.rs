@@ -180,6 +180,30 @@ impl SteppableTerminal {
     /// If sending the string fails
     #[inline]
     pub fn send_command(&self, command: &str) -> Result<(), crate::errors::PTYError> {
+        self.send_input(Input::Characters(format!("{command}\n")))?;
+
+        Ok(())
+    }
+
+    /// Send a command using an OSC paste event.
+    ///
+    /// This is generally the preferred way to send commands. It's just more efficient then sending
+    /// each character separately. However, for some reason, that I haven't been able to get to the
+    /// bottom of, some PTY processes parse out the OSC paste ANSI codes and some don't. I didn't
+    /// even know that PTY's had anything to do with parsing ANSI, so I could well be mistaken and
+    /// would appreciate being corrected.
+    ///
+    /// So if you have problems with this function then just use `send_command()` instead.
+    ///
+    /// @tombh July 2025.
+    ///
+    /// # Errors
+    /// If sending the string fails
+    #[inline]
+    pub fn send_command_with_osc_paste(
+        &self,
+        command: &str,
+    ) -> Result<(), crate::errors::PTYError> {
         self.paste_string(command)?;
         self.send_input(Input::Characters("\n".to_owned()))?;
 
@@ -432,6 +456,8 @@ impl SteppableTerminal {
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         }
+
+        self.dump_screen()?;
 
         Ok(())
     }

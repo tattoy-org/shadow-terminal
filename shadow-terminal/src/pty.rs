@@ -337,7 +337,9 @@ impl PTY {
     ) -> Result<(), crate::errors::PTYError> {
         tracing::trace!(
             "Forwarding input to PTY: '{}'",
-            String::from_utf8_lossy(&bytes).replace('\n', "\\n")
+            String::from_utf8_lossy(&bytes)
+                .replace('\n', "\\n")
+                .replace('\x1b', "^")
         );
 
         let maybe_size = bytes.iter().position(|byte| byte == &0);

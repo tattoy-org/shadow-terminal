@@ -1,7 +1,7 @@
 [package]
 name = "shadow-terminal"
 description = "A headless modern terminal emulator"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 readme = "../README.md"
 repository = "https://github.com/tattoy-org/shadow-terminal"
