@@ -28,35 +28,35 @@ pub mod pty;
 pub mod shadow_terminal;
 pub mod steppable_terminal;
 
-/// Tests
+/// Tests.
 pub mod tests {
     pub mod helpers;
 }
 
-/// All the control signals
+/// All the control signals.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Protocol {
-    /// End all loops to allow graceful shutdown
+    /// End all loops to allow graceful shutdown.
     End,
-    /// Resize the PTY and shadow terminal
+    /// Resize the PTY and shadow terminal.
     Resize {
-        /// Width of the shadow terminal
+        /// Width of the shadow terminal.
         width: u16,
-        /// Height of the shadow terminal
+        /// Height of the shadow terminal.
         height: u16,
     },
-    /// Scrolling of the terminal scrollback
+    /// Scrolling of the terminal scrollback.
     Scroll(Scroll),
 }
 
-/// The various states of scrolling
+/// The various states of scrolling.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Scroll {
-    /// Scroll the Wezterm terminal frontend up
+    /// Scroll the Wezterm terminal frontend up.
     Up,
-    /// Scroll the Wezterm terminal frontend down
+    /// Scroll the Wezterm terminal frontend down.
     Down,
     /// Exit the scroll, returning the terminal to how it was before scrolling started.
     Cancel,

@@ -6,9 +6,9 @@ use clap::Parser as _;
 use color_eyre::{eyre::ContextCompat as _, Result};
 use shadow_terminal::termwiz::terminal::Terminal as _;
 
-/// The main app
+/// The main app.
 pub struct App {
-    /// CLI arguments
+    /// CLI arguments.
     cli: crate::cli_args::CliArgs,
     /// A structured representation of the terminal's current screen.
     screen: shadow_terminal::output::native::CompleteScreen,

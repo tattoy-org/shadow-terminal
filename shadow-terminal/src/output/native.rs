@@ -96,7 +96,6 @@ pub struct ScreenDiff {
 }
 
 impl std::fmt::Debug for SurfaceDiff {
-    #[expect(clippy::min_ident_chars, reason = "It's in the standard library")]
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let info = match self {
@@ -128,7 +127,6 @@ pub enum CompleteSurface {
 }
 
 impl std::fmt::Debug for CompleteSurface {
-    #[expect(clippy::min_ident_chars, reason = "It's in the standard library")]
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let info = match self {
@@ -252,7 +250,7 @@ impl crate::shadow_terminal::ShadowTerminal {
         }
     }
 
-    /// Build a diff of the changes from the PTY
+    /// Build a diff of the changes from the PTY.
     fn build_diff(
         &mut self,
         kind: &SurfaceKind,

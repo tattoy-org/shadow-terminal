@@ -12,7 +12,7 @@ use tracing::Instrument as _;
 /// channels.
 #[non_exhaustive]
 pub struct ActiveTerminal {
-    /// The task handle to the actively running [`crate::shadow_tty::ShadowTerminal`]
+    /// The task handle to the actively running [`crate::shadow_tty::ShadowTerminal`].
     pub task_handle: tokio::task::JoinHandle<()>,
     /// A Tokio channel that receives [`termwiz::surface::Surface`] updates of the underlying
     /// terminal.
@@ -58,7 +58,7 @@ impl ActiveTerminal {
     /// terminal's "frontend".
     ///
     /// # Errors
-    /// If sending the bytes fails
+    /// If sending the bytes fails.
     #[inline]
     pub async fn send_input(
         &self,

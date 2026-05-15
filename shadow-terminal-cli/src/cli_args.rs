@@ -29,7 +29,7 @@ pub struct CliArgs {
     pub command: Vec<std::ffi::OsString>,
 }
 
-/// The available options for how shadow terminal output is sent to STDOUT
+/// The available options for how shadow terminal output is sent to STDOUT.
 #[derive(
     serde::Serialize, serde::Deserialize, clap::ValueEnum, Default, Debug, Clone, PartialEq, Eq,
 )]
