@@ -132,10 +132,10 @@ impl SteppableTerminal {
     /// shadow terminal's "frontend".
     ///
     /// For some reason this function is unreliable when sending more than one character. It is
-    /// better to send larger strings using the OSC Paste mode. See [`self.paste_string()`]
+    /// better to send larger strings using the OSC Paste mode. See [`self.paste_string()`].
     ///
     /// # Errors
-    /// If sending the string fails
+    /// If sending the string fails.
     #[inline]
     pub fn send_input(&self, input: Input) -> Result<(), crate::errors::PTYError> {
         match input {
@@ -177,7 +177,7 @@ impl SteppableTerminal {
     /// newline to tell the TTY to run the command.
     ///
     /// # Errors
-    /// If sending the string fails
+    /// If sending the string fails.
     #[inline]
     pub fn send_command(&self, command: &str) -> Result<(), crate::errors::PTYError> {
         self.send_input(Input::Characters(format!("{command}\n")))?;
@@ -198,7 +198,7 @@ impl SteppableTerminal {
     /// @tombh July 2025.
     ///
     /// # Errors
-    /// If sending the string fails
+    /// If sending the string fails.
     #[inline]
     pub fn send_command_with_osc_paste(
         &self,
@@ -213,7 +213,7 @@ impl SteppableTerminal {
     /// Use OSC Paste codes to send a large amount of text at once to the terminal.
     ///
     /// # Errors
-    /// If sending the string fails
+    /// If sending the string fails.
     #[inline]
     pub fn paste_string(&self, string: &str) -> Result<(), crate::errors::PTYError> {
         let paste_start = "\x1b[200~";
@@ -259,7 +259,7 @@ impl SteppableTerminal {
     /// Get the position of the top of the screen in the scrollback history.
     ///
     /// # Errors
-    /// If it can't convert the position from `isize` to `usize`
+    /// If it can't convert the position from `isize` to `usize`.
     #[inline]
     pub fn get_scrollback_position(
         &mut self,
@@ -276,7 +276,7 @@ impl SteppableTerminal {
     /// Convert the current Wezterm shadow terminal screen to a plain string.
     ///
     /// # Errors
-    /// If it can't write into the output string
+    /// If it can't write into the output string.
     #[inline]
     pub fn screen_as_string(&mut self) -> Result<String, crate::errors::SteppableTerminalError> {
         let size = self.shadow_terminal.terminal.get_size();
@@ -305,7 +305,7 @@ impl SteppableTerminal {
     /// Return the screen coordinates of a matching cell's contents.
     ///
     /// # Errors
-    /// If it can't write into the output string
+    /// If it can't write into the output string.
     #[inline]
     pub fn get_coords_of_cell_by_content(&mut self, content: &str) -> Option<(usize, usize)> {
         let size = self.shadow_terminal.terminal.get_size();
@@ -391,7 +391,7 @@ impl SteppableTerminal {
         Ok(string)
     }
 
-    /// Prints the contents of the current screen to STDERR
+    /// Prints the contents of the current screen to STDERR.
     ///
     /// # Errors
     /// If it can't get the screen output.
@@ -574,7 +574,7 @@ impl SteppableTerminal {
         Ok(())
     }
 
-    /// Wait for the given background colour at the given coordinates
+    /// Wait for the given background colour at the given coordinates.
     ///
     /// # Errors
     /// * If it can't get the screen contents.
@@ -591,7 +591,7 @@ impl SteppableTerminal {
             .await
     }
 
-    /// Wait for the given foreground colour at the given coordinates
+    /// Wait for the given foreground colour at the given coordinates.
     ///
     /// # Errors
     /// * If it can't get the screen contents.
@@ -608,7 +608,7 @@ impl SteppableTerminal {
             .await
     }
 
-    /// Wait for the given foreground and background colour at the given coordinates
+    /// Wait for the given foreground and background colour at the given coordinates.
     ///
     /// # Errors
     /// * If it can't get the screen contents.
@@ -673,7 +673,7 @@ impl Drop for SteppableTerminal {
 #[cfg(test)]
 mod test {
 
-    /// Setup logging
+    /// Setup logging.
     fn setup_logging() {
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

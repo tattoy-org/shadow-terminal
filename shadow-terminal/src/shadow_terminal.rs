@@ -4,10 +4,10 @@
 use snafu::ResultExt as _;
 use tracing::Instrument as _;
 
-/// Wezterm's internal configuration
+/// Wezterm's internal configuration.
 #[derive(Debug)]
 struct WeztermConfig {
-    /// The number of lines to store in the scrollback
+    /// The number of lines to store in the scrollback.
     scrollback: usize,
 }
 
@@ -33,11 +33,11 @@ impl wezterm_term::TerminalConfiguration for WeztermConfig {
 )]
 #[derive(Clone)]
 pub struct Config {
-    /// Width of terminal
+    /// Width of terminal.
     pub width: u16,
-    /// Height of terminal
+    /// Height of terminal.
     pub height: u16,
-    /// Initial command for PTY, usually the user's `$SHELL`
+    /// Initial command for PTY, usually the user's `$SHELL`.
     pub command: Vec<std::ffi::OsString>,
     /// The size of ther terminal's scrollback history.
     pub scrollback_size: usize,
@@ -68,7 +68,7 @@ pub struct Channels {
     pub output_tx: tokio::sync::mpsc::Sender<crate::pty::BytesFromPTY>,
     /// The channel side that receives terminal output updates.
     pub output_rx: tokio::sync::mpsc::Receiver<crate::pty::BytesFromPTY>,
-    /// Internally generated input
+    /// Internally generated input.
     pub internal_input_tx: Option<tokio::sync::mpsc::Sender<crate::pty::BytesFromSTDIN>>,
     /// Sends complete snapshots of the current screen state.
     shadow_output: tokio::sync::mpsc::Sender<crate::output::native::Output>,
@@ -105,11 +105,11 @@ const TIME_TO_WAIT_FOR_MORE_PTY_OUTPUT: u64 = 1000;
 /// more convenient ready-made wrapper to interect with a running shadow terminal.
 #[non_exhaustive]
 pub struct ShadowTerminal {
-    /// The Wezterm terminal that does most of the actual work of maintaining the terminal 🙇
+    /// The Wezterm terminal that does most of the actual work of maintaining the terminal 🙇.
     pub terminal: wezterm_term::Terminal,
-    /// The shadow terminal's config
+    /// The shadow terminal's config.
     pub config: Config,
-    /// The various channels needed to run the shadow terminal and its PTY
+    /// The various channels needed to run the shadow terminal and its PTY.
     pub channels: Channels,
     /// Accumulated PTY output to help minimise render events.
     pub accumulated_pty_output: Vec<u8>,
@@ -122,7 +122,7 @@ pub struct ShadowTerminal {
 }
 
 impl ShadowTerminal {
-    /// Create a new Shadow Terminal
+    /// Create a new Shadow Terminal.
     #[inline]
     pub fn new(
         config: Config,
@@ -191,7 +191,7 @@ impl ShadowTerminal {
         })
     }
 
-    /// Start listening to a stream of PTY bytes and render them to a shadow Termwiz surface
+    /// Start listening to a stream of PTY bytes and render them to a shadow Termwiz surface.
     #[inline]
     pub async fn run(
         &mut self,
@@ -264,7 +264,7 @@ impl ShadowTerminal {
             .position(|window| window == needle)
     }
 
-    /// Handle bytes from the PTY
+    /// Handle bytes from the PTY.
     pub(crate) async fn handle_pty_output(
         &mut self,
     ) -> Result<(), crate::errors::ShadowTerminalError> {
@@ -406,7 +406,7 @@ impl ShadowTerminal {
         Ok(())
     }
 
-    /// Handle any messages from the internal control protocol
+    /// Handle any messages from the internal control protocol.
     async fn handle_protocol_message(&mut self, message: &crate::Protocol) {
         tracing::debug!("Shadow Terminal received protocol message: {message:?}");
 
@@ -450,7 +450,7 @@ impl ShadowTerminal {
         }
     }
 
-    /// Just a convenience wrapper around the native Wezterm type
+    /// Just a convenience wrapper around the native Wezterm type.
     const fn wezterm_size(width: usize, height: usize) -> wezterm_term::TerminalSize {
         wezterm_term::TerminalSize {
             cols: width,

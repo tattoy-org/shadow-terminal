@@ -15,23 +15,23 @@ pub type BytesFromPTY = [u8; 4096];
 /// A single payload from the user's input stream (or sometimes internal input).
 pub type BytesFromSTDIN = [u8; 128];
 
-/// This is the PTY process that replaces the user's current TTY
+/// This is the PTY process that replaces the user's current TTY.
 #[non_exhaustive]
 pub(crate) struct PTY {
-    /// PTY starting command
+    /// PTY starting command.
     pub command: Vec<OsString>,
-    /// PTY width
+    /// PTY width.
     pub width: u16,
-    /// PTY height
+    /// PTY height.
     pub height: u16,
     /// Send side of channel to send control messages like; shutdown and resize.
     pub control_tx: tokio::sync::broadcast::Sender<crate::Protocol>,
-    /// Send side of channel sending updates from the PTY process
+    /// Send side of channel sending updates from the PTY process.
     pub output_tx: tokio::sync::mpsc::Sender<crate::pty::BytesFromPTY>,
 }
 
 impl PTY {
-    /// Function just to isolate the PTY setup
+    /// Function just to isolate the PTY setup.
     fn setup_pty(&self) -> Result<portable_pty::PtyPair, crate::errors::PTYError> {
         tracing::debug!("Setting up PTY");
         let pty_system = portable_pty::native_pty_system();
@@ -165,7 +165,7 @@ impl PTY {
         );
     }
 
-    /// Start the PTY
+    /// Start the PTY.
     pub(crate) async fn run(
         self,
         user_input_rx: mpsc::Receiver<BytesFromSTDIN>,
@@ -270,12 +270,12 @@ impl PTY {
         Ok(())
     }
 
-    /// Forward channel bytes from the user's input to the virtual PTY
+    /// Forward channel bytes from the user's input to the virtual PTY.
     async fn forward_input(
         mut user_input: mpsc::Receiver<BytesFromSTDIN>,
         mut internal_input: mpsc::Receiver<BytesFromSTDIN>,
         mut pty_writer: std::boxed::Box<dyn std::io::Write + std::marker::Send>,
-        pty_master: std::boxed::Box<(dyn portable_pty::MasterPty + std::marker::Send + 'static)>,
+        pty_master: std::boxed::Box<dyn portable_pty::MasterPty + std::marker::Send + 'static>,
         mut protocol: tokio::sync::broadcast::Receiver<crate::Protocol>,
     ) -> Result<(), crate::errors::PTYError> {
         tracing::debug!("Starting `forward_input` loop");
@@ -308,7 +308,7 @@ impl PTY {
     /// Handle a message from the Tattoy protocol broadcast channel.
     fn handle_protocol_message_for_input_loop(
         message: &std::result::Result<crate::Protocol, tokio::sync::broadcast::error::RecvError>,
-        pty_master: &std::boxed::Box<(dyn portable_pty::MasterPty + std::marker::Send + 'static)>,
+        pty_master: &std::boxed::Box<dyn portable_pty::MasterPty + std::marker::Send + 'static>,
     ) -> Result<(), crate::errors::PTYError> {
         match message {
             Ok(crate::Protocol::End) => {
