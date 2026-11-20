@@ -1,4 +1,4 @@
-//! Test helpers
+//! Test helpers.
 
 #![expect(clippy::unwrap_used, reason = "It's for use in tests only")]
 
@@ -24,15 +24,19 @@ pub fn workspace_dir() -> std::path::PathBuf {
 #[inline]
 #[must_use]
 pub fn get_canonical_shell() -> Vec<std::ffi::OsString> {
-    #[cfg(not(target_os = "windows"))]
-    let mut shell = "bash --norc --noprofile".to_owned();
+    let shell = if let Ok(custom_shell) = std::env::var("CANONICAL_SHELL") {
+        custom_shell
+    } else {
+        #[cfg(not(target_os = "windows"))]
+        {
+            "bash --norc --noprofile".to_owned()
+        }
 
-    #[cfg(target_os = "windows")]
-    let mut shell = "powershell -NoProfile".to_owned();
-
-    if let Ok(custom_shell) = std::env::var("CANONICAL_SHELL") {
-        shell = custom_shell;
-    }
+        #[cfg(target_os = "windows")]
+        {
+            "powershell -NoProfile".to_owned()
+        }
+    };
 
     tracing::debug!("Use canonical shell: {shell}");
 

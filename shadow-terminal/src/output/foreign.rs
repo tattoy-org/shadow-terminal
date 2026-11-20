@@ -1,6 +1,6 @@
 //! Define the structure of output for FFI and STDOUT users.
 
-/// The parent type for all output
+/// The parent type for all output.
 #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[non_exhaustive]
 pub struct Output {

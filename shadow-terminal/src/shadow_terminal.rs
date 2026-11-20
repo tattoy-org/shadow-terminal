@@ -4,10 +4,10 @@
 use snafu::ResultExt as _;
 use tracing::Instrument as _;
 
-/// Wezterm's internal configuration
+/// Wezterm's internal configuration.
 #[derive(Debug)]
 struct WeztermConfig {
-    /// The number of lines to store in the scrollback
+    /// The number of lines to store in the scrollback.
     scrollback: usize,
 }
 
@@ -33,11 +33,11 @@ impl wezterm_term::TerminalConfiguration for WeztermConfig {
 )]
 #[derive(Clone)]
 pub struct Config {
-    /// Width of terminal
+    /// Width of terminal.
     pub width: u16,
-    /// Height of terminal
+    /// Height of terminal.
     pub height: u16,
-    /// Initial command for PTY, usually the user's `$SHELL`
+    /// Initial command for PTY, usually the user's `$SHELL`.
     pub command: Vec<std::ffi::OsString>,
     /// The size of ther terminal's scrollback history.
     pub scrollback_size: usize,
@@ -64,12 +64,10 @@ impl Default for Config {
 pub struct Channels {
     /// Internal channel for control messages like shutdown and resize.
     pub control_tx: tokio::sync::broadcast::Sender<crate::Protocol>,
-    /// The channel side that sends terminal output updates.
-    pub output_tx: tokio::sync::mpsc::Sender<crate::pty::BytesFromPTY>,
-    /// The channel side that receives terminal output updates.
-    pub output_rx: tokio::sync::mpsc::Receiver<crate::pty::BytesFromPTY>,
-    /// Internally generated input
-    pub internal_input_tx: Option<tokio::sync::mpsc::Sender<crate::pty::BytesFromSTDIN>>,
+    /// Channel for receiving PTY-like byte output.
+    output: PTYLikeOutput,
+    /// Internally generated input.
+    pub internal_input_tx: Option<tokio::sync::mpsc::Sender<bytes::Bytes>>,
     /// Sends complete snapshots of the current screen state.
     shadow_output: tokio::sync::mpsc::Sender<crate::output::native::Output>,
 }
@@ -81,6 +79,22 @@ pub struct LastSent {
     pub pty_sequence: usize,
     /// The size of the last sent terminal output.
     pub pty_size: (usize, usize),
+}
+
+/// PTY output channels. Whether from an internal or external PTY.
+#[non_exhaustive]
+enum PTYLikeOutput {
+    /// PTY output channels for  when the PTY is started internally.
+    /// The channel side that receives terminal output updates.
+    Internal(
+        (
+            tokio::sync::mpsc::Sender<bytes::Bytes>,
+            tokio::sync::mpsc::Receiver<bytes::Bytes>,
+        ),
+    ),
+    /// The receiving end of a channel that provides the output from an externally managed PTY or
+    /// PTY-like process.
+    External(tokio::sync::mpsc::Receiver<bytes::Bytes>),
 }
 
 /// The special ANSI code that applications send to get a reply with the current cursor position.
@@ -105,14 +119,14 @@ const TIME_TO_WAIT_FOR_MORE_PTY_OUTPUT: u64 = 1000;
 /// more convenient ready-made wrapper to interect with a running shadow terminal.
 #[non_exhaustive]
 pub struct ShadowTerminal {
-    /// The Wezterm terminal that does most of the actual work of maintaining the terminal 🙇
+    /// The Wezterm terminal that does most of the actual work of maintaining the terminal 🙇.
     pub terminal: wezterm_term::Terminal,
-    /// The shadow terminal's config
+    /// The shadow terminal's config.
     pub config: Config,
-    /// The various channels needed to run the shadow terminal and its PTY
+    /// The various channels needed to run the shadow terminal and its PTY.
     pub channels: Channels,
     /// Accumulated PTY output to help minimise render events.
-    pub accumulated_pty_output: Vec<u8>,
+    pub accumulated_pty_output: bytes::BytesMut,
     /// The timestamp for when to broadcast accumulated PTY output.
     pub wait_for_output_until: Option<tokio::time::Instant>,
     /// The current position of the scollback buffer.
@@ -122,14 +136,18 @@ pub struct ShadowTerminal {
 }
 
 impl ShadowTerminal {
-    /// Create a new Shadow Terminal
+    /// Create a new Shadow Terminal.
     #[inline]
     pub fn new(
         config: Config,
+        ptylike_output: Option<tokio::sync::mpsc::Receiver<bytes::Bytes>>,
         shadow_output: tokio::sync::mpsc::Sender<crate::output::native::Output>,
     ) -> Self {
         let (control_tx, _) = tokio::sync::broadcast::channel(64);
-        let (output_tx, output_rx) = tokio::sync::mpsc::channel(1);
+        let output = match ptylike_output {
+            Some(output_rx) => PTYLikeOutput::External(output_rx),
+            None => PTYLikeOutput::Internal(tokio::sync::mpsc::channel(1)),
+        };
 
         tracing::debug!("Creating the in-memory Wezterm terminal");
         let terminal = wezterm_term::Terminal::new(
@@ -137,7 +155,7 @@ impl ShadowTerminal {
             std::sync::Arc::new(WeztermConfig {
                 scrollback: config.scrollback_size,
             }),
-            "Tattoy",
+            "Shadow Terminal",
             "O_o",
             Box::<Vec<u8>>::default(),
         );
@@ -148,12 +166,11 @@ impl ShadowTerminal {
             config,
             channels: Channels {
                 control_tx,
-                output_tx,
-                output_rx,
+                output,
                 internal_input_tx: None,
                 shadow_output,
             },
-            accumulated_pty_output: Vec::new(),
+            accumulated_pty_output: bytes::BytesMut::new(),
             wait_for_output_until: None,
             scroll_position: 0,
             last_sent: LastSent {
@@ -165,42 +182,45 @@ impl ShadowTerminal {
 
     /// Start the background PTY process.
     #[inline]
-    pub fn start(
+    pub(crate) fn start_pty(
         &mut self,
-        user_input_rx: tokio::sync::mpsc::Receiver<crate::pty::BytesFromSTDIN>,
-    ) -> tokio::task::JoinHandle<Result<(), crate::errors::PTYError>> {
+        user_input_rx: tokio::sync::mpsc::Receiver<bytes::Bytes>,
+    ) -> Result<
+        tokio::task::JoinHandle<Result<(), crate::errors::PTYError>>,
+        crate::errors::SteppableTerminalError,
+    > {
         let (internal_input_tx, internal_input_rx) = tokio::sync::mpsc::channel(1);
         self.channels.internal_input_tx = Some(internal_input_tx);
+
+        let PTYLikeOutput::Internal((output_tx, _)) = &self.channels.output else {
+            snafu::whatever!("Starting a PTY without internal PTY output channels");
+        };
 
         let pty = crate::pty::PTY {
             command: self.config.command.clone(),
             width: self.config.width,
             height: self.config.height,
             control_tx: self.channels.control_tx.clone(),
-            output_tx: self.channels.output_tx.clone(),
+            output_tx: output_tx.clone(),
         };
 
         // I don't think the PTY should be run in a standard thread, because it's not actually CPU
         // intensive in terms of the current thread. It runs in an OS sub process, so in theory
         // shouldn't conflict with Tokio's IO-focussed scheduler?
         let current_span = tracing::Span::current();
-        tokio::spawn(async move {
+        Ok(tokio::spawn(async move {
             pty.run(user_input_rx, internal_input_rx)
                 .instrument(current_span)
                 .await
-        })
+        }))
     }
 
-    /// Start listening to a stream of PTY bytes and render them to a shadow Termwiz surface
+    /// Start listening to a stream of PTY bytes and render them to a shadow Termwiz surface.
     #[inline]
-    pub async fn run(
-        &mut self,
-        user_input_rx: tokio::sync::mpsc::Receiver<crate::pty::BytesFromSTDIN>,
-    ) {
+    pub async fn run(&mut self) {
         tracing::debug!("Starting Shadow Terminal loop...");
 
         let mut control_rx = self.channels.control_tx.subscribe();
-        self.start(user_input_rx);
 
         tracing::debug!("Starting Shadow Terminal main loop");
         #[expect(
@@ -211,7 +231,7 @@ impl ShadowTerminal {
             let is_wait = self.wait_for_output_until.is_some();
             let wait_until = self.wait_for_output_until;
             tokio::select! {
-                Some(bytes) = self.channels.output_rx.recv() => {
+                Some(bytes) = self.get_output() => {
                     self.accumulate_pty_output(&bytes);
                 },
                 () = Self::wait_for_more_pty_output(wait_until), if is_wait => {
@@ -232,6 +252,28 @@ impl ShadowTerminal {
         tracing::debug!("Shadow Terminal loop finished");
     }
 
+    /// Get output from the internal PTY or external PTY-like process.
+    async fn get_output(&mut self) -> Option<bytes::Bytes> {
+        match &mut self.channels.output {
+            PTYLikeOutput::Internal((_, pty_output_rx)) => pty_output_rx.recv().await,
+            PTYLikeOutput::External(receiver) => receiver.recv().await,
+        }
+    }
+
+    /// Get output from the internal PTY or external PTY-like process.
+    ///
+    /// # Errors
+    /// If receiving from the channel fails.
+    #[inline]
+    pub fn try_get_output(
+        &mut self,
+    ) -> Result<bytes::Bytes, tokio::sync::mpsc::error::TryRecvError> {
+        match &mut self.channels.output {
+            PTYLikeOutput::Internal((_, pty_output_rx)) => pty_output_rx.try_recv(),
+            PTYLikeOutput::External(receiver) => receiver.try_recv(),
+        }
+    }
+
     /// The PTY crate that we use only sends output at 4kb a time. Often, on bigger terminals, a
     /// single change to the PTY can trigger a handful of these payloads. It would be inefficient to
     /// trigger output broadcasts for each mini PTY output. It's better to let the Wezterm terminal
@@ -243,14 +285,17 @@ impl ShadowTerminal {
     }
 
     /// Accumulate PTY outputs.
-    fn accumulate_pty_output(&mut self, bytes: &crate::pty::BytesFromPTY) {
-        // TODO: I feel like this loop is either inefficient, naive, or both.
-        for byte in bytes {
-            if byte == &0 {
-                break;
-            }
-            self.accumulated_pty_output.push(*byte);
-        }
+    fn accumulate_pty_output(&mut self, bytes: &bytes::Bytes) {
+        let valid_bytes = match bytes.iter().position(|&byte| byte == 0) {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`index` is guaranteed to be within the array."
+            )]
+            Some(index) => &bytes[..index],
+            None => bytes,
+        };
+
+        bytes::BufMut::put(&mut self.accumulated_pty_output, valid_bytes);
 
         let next_output_broadcast = tokio::time::Instant::now()
             + tokio::time::Duration::from_micros(TIME_TO_WAIT_FOR_MORE_PTY_OUTPUT);
@@ -258,20 +303,19 @@ impl ShadowTerminal {
     }
 
     /// Find bytes in bytes.
-    fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    fn find_subsequence(haystack: &bytes::BytesMut, needle: &bytes::Bytes) -> Option<usize> {
         haystack
             .windows(needle.len())
             .position(|window| window == needle)
     }
 
-    /// Handle bytes from the PTY
+    /// Handle bytes from the PTY.
     pub(crate) async fn handle_pty_output(
         &mut self,
     ) -> Result<(), crate::errors::ShadowTerminalError> {
-        let bytes_copy = self.accumulated_pty_output.clone();
-        let bytes = bytes_copy.as_slice();
+        let bytes = self.accumulated_pty_output.clone();
 
-        if Self::find_subsequence(bytes, APPLICATION_MODE_START.as_bytes()).is_some() {
+        if Self::find_subsequence(&bytes, &APPLICATION_MODE_START.into()).is_some() {
             tracing::trace!("Starting terminal 'application mode'");
             crate::output::native::raw_string_direct_to_terminal(APPLICATION_MODE_START)
                 .with_whatever_context(|err| {
@@ -279,7 +323,7 @@ impl ShadowTerminal {
                 })?;
         }
 
-        if Self::find_subsequence(bytes, APPLICATION_MODE_END.as_bytes()).is_some() {
+        if Self::find_subsequence(&bytes, &APPLICATION_MODE_END.into()).is_some() {
             tracing::trace!("APPLICATION_MODE_END");
             crate::output::native::raw_string_direct_to_terminal(APPLICATION_MODE_END)
                 .with_whatever_context(|err| {
@@ -287,8 +331,8 @@ impl ShadowTerminal {
                 })?;
         }
 
-        self.handle_cursor_position_request(bytes).await?;
-        self.terminal.advance_bytes(bytes);
+        self.handle_cursor_position_request(&bytes).await?;
+        self.terminal.advance_bytes(&bytes);
         tracing::trace!("Wezterm shadow terminal advanced {} bytes", bytes.len());
         let result = self.send_outputs().await;
         if let Err(error) = result {
@@ -312,31 +356,24 @@ impl ShadowTerminal {
     )]
     async fn handle_cursor_position_request(
         &mut self,
-        bytes: &[u8],
+        bytes: &bytes::BytesMut,
     ) -> Result<(), crate::errors::ShadowTerminalError> {
-        if Self::find_subsequence(bytes, CURSOR_POSITION_REQUEST.as_bytes()).is_none() {
+        if Self::find_subsequence(bytes, &CURSOR_POSITION_REQUEST.into()).is_none() {
             return Ok(());
         }
 
-        let mut payload: crate::pty::BytesFromSTDIN = [0; 128];
         let cursor_position = self.terminal.cursor_pos();
         let response_string = format!("\x1b[{};{}R", cursor_position.y, cursor_position.x);
-        let response_bytes = response_string.as_bytes();
+        let response = bytes::Bytes::from(response_string.clone());
 
-        for chunk in response_bytes.chunks(128) {
-            crate::pty::PTY::add_bytes_to_buffer(&mut payload, chunk).with_whatever_context(
-                |error| format!("Couldn't add response to payload buffer: {error:?}"),
-            )?;
-
-            if let Some(sender) = self.channels.internal_input_tx.as_ref() {
-                tracing::debug!(
-                    "Responding to cursor position request with: {}",
-                    response_string.replace('\x1b', "^")
-                );
-                let result = sender.send(payload).await;
-                if let Err(error) = result {
-                    snafu::whatever!("Couldn't send internal input: {error:?}");
-                }
+        if let Some(sender) = self.channels.internal_input_tx.as_ref() {
+            tracing::debug!(
+                "Responding to cursor position request with: {}",
+                response_string.replace('\x1b', "^")
+            );
+            let result = sender.send(response).await;
+            if let Err(error) = result {
+                snafu::whatever!("Couldn't send internal input: {error:?}");
             }
         }
 
@@ -381,7 +418,6 @@ impl ShadowTerminal {
         let result = self.channels.shadow_output.send(output).await;
         if let Err(error) = result {
             tracing::error!("Sending shadow output: {error:?}");
-            return Ok(());
         }
 
         Ok(())
@@ -406,7 +442,7 @@ impl ShadowTerminal {
         Ok(())
     }
 
-    /// Handle any messages from the internal control protocol
+    /// Handle any messages from the internal control protocol.
     async fn handle_protocol_message(&mut self, message: &crate::Protocol) {
         tracing::debug!("Shadow Terminal received protocol message: {message:?}");
 
@@ -450,7 +486,7 @@ impl ShadowTerminal {
         }
     }
 
-    /// Just a convenience wrapper around the native Wezterm type
+    /// Just a convenience wrapper around the native Wezterm type.
     const fn wezterm_size(width: usize, height: usize) -> wezterm_term::TerminalSize {
         wezterm_term::TerminalSize {
             cols: width,
