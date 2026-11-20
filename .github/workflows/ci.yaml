@@ -59,13 +59,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - run: rustup toolchain install $RUST_VERSION --profile minimal
+      - run: rustup toolchain install $RUST_VERSION
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-shear
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          cache-on-failure: false
+        key: bust
       - name: Lint
         run: cargo clippy -- --deny warnings
       - name: Formatting

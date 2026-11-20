@@ -18,8 +18,8 @@ const DEFAULT_TIMEOUT: u32 = 500;
 /// sequence.
 #[non_exhaustive]
 pub enum Input {
-    /// For sending 1 or few charactes. If you want to send a lot of characters, it's better to
-    /// use and ANSI "paste", where everything gets sent at once. In which case you'd use `Event`.
+    /// For sending 1 or a few charactes. If you want to send a lot of characters, it's better to
+    /// use an ANSI "paste", where everything gets sent at once. In which case you'd use `Event`.
     Characters(String),
     /// For sending known ANSI sequences, like mouse movement, bracketed paste, etc.
     Event(String),
@@ -39,7 +39,7 @@ pub struct SteppableTerminal {
         tokio::sync::Mutex<tokio::task::JoinHandle<Result<(), crate::errors::PTYError>>>,
     >,
     /// A Tokio channel that forwards bytes to the underlying PTY's STDIN.
-    pub pty_input_tx: tokio::sync::mpsc::Sender<crate::pty::BytesFromSTDIN>,
+    pub pty_input_tx: tokio::sync::mpsc::Sender<bytes::Bytes>,
 }
 
 impl SteppableTerminal {
@@ -53,10 +53,10 @@ impl SteppableTerminal {
     ) -> Result<Self, crate::errors::SteppableTerminalError> {
         let (surface_output_tx, _) = tokio::sync::mpsc::channel(1);
         let mut shadow_terminal =
-            crate::shadow_terminal::ShadowTerminal::new(config, surface_output_tx);
+            crate::shadow_terminal::ShadowTerminal::new(config, None, surface_output_tx);
 
         let (pty_input_tx, pty_input_rx) = tokio::sync::mpsc::channel(2048);
-        let pty_task_handle = shadow_terminal.start(pty_input_rx);
+        let pty_task_handle = shadow_terminal.start_pty(pty_input_rx)?;
 
         let mut steppable = Self {
             shadow_terminal,
@@ -141,11 +141,8 @@ impl SteppableTerminal {
         match input {
             Input::Characters(characters) => {
                 for char in characters.chars() {
-                    let mut buffer: crate::pty::BytesFromSTDIN = [0; 128];
-                    char.encode_utf8(&mut buffer);
-
                     self.pty_input_tx
-                        .try_send(buffer)
+                        .try_send(char.to_string().into())
                         .with_whatever_context(|err| {
                             format!("Couldn't send character input ({char}): {err:?}")
                         })?;
@@ -155,16 +152,11 @@ impl SteppableTerminal {
             }
 
             Input::Event(event) => {
-                for chunk in event.as_bytes().chunks(128) {
-                    let mut buffer: crate::pty::BytesFromSTDIN = [0; 128];
-                    crate::pty::PTY::add_bytes_to_buffer(&mut buffer, chunk)?;
-
-                    self.pty_input_tx
-                        .try_send(buffer)
-                        .with_whatever_context(|err| {
-                            format!("Couldn't send input event ({event:?}): {err:?}")
-                        })?;
-                }
+                self.pty_input_tx
+                    .try_send(event.clone().into())
+                    .with_whatever_context(|err| {
+                        format!("Couldn't send input event ({event:?}): {err:?}")
+                    })?;
 
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
@@ -187,7 +179,7 @@ impl SteppableTerminal {
 
     /// Send a command using an OSC paste event.
     ///
-    /// This is generally the preferred way to send commands. It's just more efficient then sending
+    /// This is generally the preferred way to send commands. It's just more efficient than sending
     /// each character separately. However, for some reason, that I haven't been able to get to the
     /// bottom of, some PTY processes parse out the OSC paste ANSI codes and some don't. I didn't
     /// even know that PTY's had anything to do with parsing ANSI, so I could well be mistaken and
@@ -235,12 +227,13 @@ impl SteppableTerminal {
     #[inline]
     pub async fn render_all_output(&mut self) -> Result<(), crate::errors::PTYError> {
         loop {
-            let result = self.shadow_terminal.channels.output_rx.try_recv();
+            let result = self.shadow_terminal.try_get_output();
             match result {
                 Ok(bytes) => {
-                    self.shadow_terminal
-                        .accumulated_pty_output
-                        .append(&mut bytes.to_vec());
+                    bytes::BufMut::put(
+                        &mut self.shadow_terminal.accumulated_pty_output,
+                        &mut bytes.clone(),
+                    );
 
                     Box::pin(self.shadow_terminal.handle_pty_output())
                         .await
@@ -473,7 +466,7 @@ impl SteppableTerminal {
         string: &str,
         maybe_timeout: Option<u32>,
     ) -> Result<(), crate::errors::SteppableTerminalError> {
-        let timeout = maybe_timeout.map_or(DEFAULT_TIMEOUT, |ms| ms);
+        let timeout = maybe_timeout.unwrap_or(DEFAULT_TIMEOUT);
 
         for i in 0u32..=timeout {
             self.render_all_output()
@@ -506,7 +499,7 @@ impl SteppableTerminal {
         y: usize,
         maybe_timeout: Option<u32>,
     ) -> Result<(), crate::errors::SteppableTerminalError> {
-        let timeout = maybe_timeout.map_or(DEFAULT_TIMEOUT, |ms| ms);
+        let timeout = maybe_timeout.unwrap_or(DEFAULT_TIMEOUT);
 
         for i in 0u32..=timeout {
             self.render_all_output()
@@ -538,7 +531,7 @@ impl SteppableTerminal {
         y: usize,
         maybe_timeout: Option<u32>,
     ) -> Result<(), crate::errors::SteppableTerminalError> {
-        let timeout = maybe_timeout.map_or(DEFAULT_TIMEOUT, |ms| ms);
+        let timeout = maybe_timeout.unwrap_or(DEFAULT_TIMEOUT);
         let colour = match maybe_colour {
             Some(colour) => Self::make_colour_attribute(colour.0, colour.1, colour.2, colour.3),
             None => termwiz::color::ColorAttribute::Default,
