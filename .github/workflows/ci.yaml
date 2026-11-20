@@ -59,15 +59,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - run: rustup toolchain install $RUST_VERSION --profile minimal
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy, rustfmt
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-shear
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          cache-on-failure: false
       - name: Lint
-        run: cargo clippy -- --deny warnings
+        run: |
+          cargo clippy --version
+          cargo clippy -- --deny warnings
       - name: Formatting
         run: cargo fmt --check
       - name: Check for unused dependencies

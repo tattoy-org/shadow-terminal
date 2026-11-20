@@ -34,13 +34,16 @@ impl App {
             config.height.into(),
         );
         let shadow_terminal =
-            shadow_terminal::active_terminal::ActiveTerminal::start(config.clone());
+            shadow_terminal::active_terminal::ActiveTerminal::start_with_pty(config.clone())?;
         let mut runner = Self {
             cli,
             screen,
             shadow_terminal,
         };
-        Self::forward_stdin(runner.shadow_terminal.pty_input_tx.clone());
+        let Some(input_tx) = &runner.shadow_terminal.pty_input_tx else {
+            color_eyre::eyre::bail!("Shadow Terminal not setup to receive PTY input");
+        };
+        Self::forward_stdin(input_tx.clone());
         runner.listen_for_output().await?;
 
         Ok(())
@@ -145,19 +148,29 @@ impl App {
     }
 
     /// Forward STDIN to the shadow terminal.
-    fn forward_stdin(
-        pty_input_tx: tokio::sync::mpsc::Sender<shadow_terminal::pty::BytesFromSTDIN>,
-    ) {
+    fn forward_stdin(pty_input_tx: tokio::sync::mpsc::Sender<shadow_terminal::bytes::Bytes>) {
         // The Tokio docs actually suggest using `std::thread` to listen on STDIN for interactive
         // applications.
         std::thread::spawn(move || {
+            let buffer_size = 128;
             let stdin = std::io::stdin();
             let mut reader = std::io::BufReader::new(stdin);
+            let mut buffer = shadow_terminal::bytes::BytesMut::zeroed(buffer_size);
+
             loop {
-                let mut buffer: shadow_terminal::pty::BytesFromSTDIN = [0; 128];
-                match reader.read(&mut buffer[..]) {
-                    Ok(_size) => {
-                        if let Err(error) = pty_input_tx.try_send(buffer) {
+                if buffer.len() < buffer_size {
+                    buffer.resize(buffer_size, 0);
+                }
+                match reader.read(&mut buffer) {
+                    Ok(0) => {
+                        tracing::debug!("STDIN reader received EOF, exiting...");
+                        break;
+                    }
+                    Ok(size) => {
+                        let filled_data = buffer.split_to(size);
+                        let frozen_bytes = filled_data.freeze();
+
+                        if let Err(error) = pty_input_tx.try_send(frozen_bytes) {
                             tracing::error!("Couldn't forward STDIN to shadow terminal: {error:?}");
                             break;
                         }
@@ -198,7 +211,8 @@ mod test {
         format: crate::cli_args::OutputFormat,
     ) -> assert_cmd::assert::Assert {
         let format_as_string = format!("{format:?}").to_lowercase();
-        let mut cmd = assert_cmd::Command::cargo_bin("shadow-terminal").unwrap();
+        let bin = format!("{}/target/debug/shadow-terminal", workspace_dir().display());
+        let mut cmd = assert_cmd::Command::new(bin);
         let mut args = vec![
             "--width",
             "80",
@@ -242,8 +256,14 @@ mod test {
             ],
             crate::cli_args::OutputFormat::JSON,
         );
-        let json = String::from_utf8(result.success().get_output().stdout.clone()).unwrap();
-        let output: shadow_terminal::output::foreign::Output = serde_json::from_str(&json).unwrap();
+        let all_lines = String::from_utf8(result.success().get_output().stdout.clone()).unwrap();
+        let json = all_lines.lines().last().unwrap();
+        let output = match serde_json::from_str::<shadow_terminal::output::foreign::Output>(json) {
+            Ok(output) => output,
+            Err(err) => {
+                panic!("{err}\n{json}")
+            }
+        };
         assert_eq!(output.cells[0].text, "e".to_owned());
         assert_eq!(output.cells[4].text, "h".to_owned());
 

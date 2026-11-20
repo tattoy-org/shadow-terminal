@@ -5,15 +5,9 @@
 
 use std::{ffi::OsString, io::Read as _};
 
-use snafu::{OptionExt as _, ResultExt as _};
+use snafu::ResultExt as _;
 use tokio::sync::mpsc;
 use tracing::Instrument as _;
-
-/// A single payload from the PTY output stream. This value comes from the `portable_pty` crate and
-/// doesn't seem adjustable.
-pub type BytesFromPTY = [u8; 4096];
-/// A single payload from the user's input stream (or sometimes internal input).
-pub type BytesFromSTDIN = [u8; 128];
 
 /// This is the PTY process that replaces the user's current TTY.
 #[non_exhaustive]
@@ -27,7 +21,7 @@ pub(crate) struct PTY {
     /// Send side of channel to send control messages like; shutdown and resize.
     pub control_tx: tokio::sync::broadcast::Sender<crate::Protocol>,
     /// Send side of channel sending updates from the PTY process.
-    pub output_tx: tokio::sync::mpsc::Sender<crate::pty::BytesFromPTY>,
+    pub output_tx: tokio::sync::mpsc::Sender<bytes::Bytes>,
 }
 
 impl PTY {
@@ -61,12 +55,17 @@ impl PTY {
     /// broadcast its output on an async channel.
     fn pty_reader_loop(
         pty_reader: std::boxed::Box<dyn std::io::Read + std::marker::Send>,
-        pty_reader_tx: mpsc::Sender<BytesFromPTY>,
+        pty_reader_tx: mpsc::Sender<bytes::Bytes>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
+            let buffer_size = 4096;
             let mut reader = std::io::BufReader::new(pty_reader);
+            let mut buffer = bytes::BytesMut::zeroed(buffer_size);
+
             loop {
-                let mut buffer: BytesFromPTY = [0; 4096];
+                if buffer.len() < buffer_size {
+                    buffer.resize(buffer_size, 0);
+                }
 
                 let now = std::time::Instant::now();
                 let read_result = reader.read(&mut buffer);
@@ -83,7 +82,9 @@ impl PTY {
                             n,
                             elapsed
                         );
-                        let send_result = pty_reader_tx.blocking_send(buffer);
+                        let filled_data = buffer.split_to(n);
+                        let frozen_bytes = filled_data.freeze();
+                        let send_result = pty_reader_tx.blocking_send(frozen_bytes);
                         if let Err(error) = send_result {
                             tracing::error!("Broadcasting PTY output: {error:?}");
                             break;
@@ -168,8 +169,8 @@ impl PTY {
     /// Start the PTY.
     pub(crate) async fn run(
         self,
-        user_input_rx: mpsc::Receiver<BytesFromSTDIN>,
-        internal_input_rx: mpsc::Receiver<BytesFromSTDIN>,
+        user_input_rx: mpsc::Receiver<bytes::Bytes>,
+        internal_input_rx: mpsc::Receiver<bytes::Bytes>,
     ) -> Result<(), crate::errors::PTYError> {
         let (pty_reader_tx, mut pty_reader_rx) = tokio::sync::mpsc::channel(1);
 
@@ -251,13 +252,13 @@ impl PTY {
     /// Read bytes from the underlying PTY sub process and forward them to the Shadow Terminal.
     async fn read_stream(
         &self,
-        pty_reader_rx: &mut mpsc::Receiver<BytesFromPTY>,
+        pty_reader_rx: &mut mpsc::Receiver<bytes::Bytes>,
     ) -> Result<(), crate::errors::PTYError> {
         let Some(bytes) = pty_reader_rx.recv().await else {
             return Ok(());
         };
 
-        let result = self.output_tx.send(bytes).await;
+        let result = self.output_tx.send(bytes.clone()).await;
         if let Err(err) = result {
             tracing::error!("Sending bytes on PTY output channel: {err}");
         }
@@ -272,8 +273,8 @@ impl PTY {
 
     /// Forward channel bytes from the user's input to the virtual PTY.
     async fn forward_input(
-        mut user_input: mpsc::Receiver<BytesFromSTDIN>,
-        mut internal_input: mpsc::Receiver<BytesFromSTDIN>,
+        mut user_input: mpsc::Receiver<bytes::Bytes>,
+        mut internal_input: mpsc::Receiver<bytes::Bytes>,
         mut pty_writer: std::boxed::Box<dyn std::io::Write + std::marker::Send>,
         pty_master: std::boxed::Box<dyn portable_pty::MasterPty + std::marker::Send + 'static>,
         mut protocol: tokio::sync::broadcast::Receiver<crate::Protocol>,
@@ -292,11 +293,11 @@ impl PTY {
                         break;
                     }
                 }
-                Some(some_bytes) = user_input.recv() => {
-                    Self::handle_input_bytes(some_bytes, &mut pty_writer)?;
+                Some(bytes) = user_input.recv() => {
+                    Self::handle_input_bytes(&bytes, &mut pty_writer)?;
                 }
-                Some(some_bytes) = internal_input.recv() => {
-                    Self::handle_input_bytes(some_bytes, &mut pty_writer)?;
+                Some(bytes) = internal_input.recv() => {
+                    Self::handle_input_bytes(&bytes, &mut pty_writer)?;
                 }
             }
         }
@@ -324,7 +325,9 @@ impl PTY {
                 }
             }
             Ok(_) => (),
-            Err(err) => snafu::whatever!("{err:?}"),
+            Err(err) => {
+                snafu::whatever!("{err:?}");
+            }
         }
 
         Ok(())
@@ -332,27 +335,19 @@ impl PTY {
 
     /// Handle input from end user.
     fn handle_input_bytes(
-        bytes: BytesFromSTDIN,
+        bytes: &bytes::Bytes,
         pty_stdin: &mut std::boxed::Box<dyn std::io::Write + std::marker::Send>,
     ) -> Result<(), crate::errors::PTYError> {
         tracing::trace!(
             "Forwarding input to PTY: '{}'",
-            String::from_utf8_lossy(&bytes)
+            String::from_utf8_lossy(bytes)
                 .replace('\n', "\\n")
                 .replace('\x1b', "^")
         );
 
-        let maybe_size = bytes.iter().position(|byte| byte == &0);
-        let size = maybe_size.unwrap_or(128);
-        let byte_slice = bytes.get(0..size).with_whatever_context(|| {
-            "Couldn't get slice of input payload. Should be impossible."
+        pty_stdin.write_all(bytes).with_whatever_context(|err| {
+            format!("`handle_input_bytes()`: couldn't write bytes into PTY's STDIN: {err:?}")
         })?;
-
-        pty_stdin
-            .write_all(byte_slice)
-            .with_whatever_context(|err| {
-                format!("`handle_input_bytes()`: couldn't write bytes into PTY's STDIN: {err:?}")
-            })?;
         pty_stdin
             .flush()
             .with_whatever_context(|err| format!("Couldn't flush STDIN stream to PTY: {err:?}"))?;
@@ -371,28 +366,6 @@ impl PTY {
             pixel_width: 0,
             pixel_height: 0,
         }
-    }
-
-    /// Insert bytes into a buffer.
-    pub(crate) fn add_bytes_to_buffer(
-        buffer: &mut BytesFromSTDIN,
-        bytes: &[u8],
-    ) -> Result<(), crate::errors::PTYError> {
-        if bytes.len() > buffer.len() {
-            snafu::whatever!(
-                "Bytes ({}) to add to buffer are more than the buffer size ({}).",
-                bytes.len(),
-                buffer.len()
-            );
-        }
-        for (i, chunk_byte) in bytes.iter().enumerate() {
-            let buffer_byte = buffer
-                .get_mut(i)
-                .with_whatever_context(|| "Couldn't get byte from buffer")?;
-            *buffer_byte = *chunk_byte;
-        }
-
-        Ok(())
     }
 }
 
@@ -422,19 +395,19 @@ mod test {
         command: Vec<OsString>,
     ) -> (
         tokio::task::JoinHandle<std::string::String>,
-        mpsc::Sender<BytesFromSTDIN>,
+        mpsc::Sender<bytes::Bytes>,
     ) {
         // TODO: Think about a convenient way to enable this whenever only a single test is ran
         // setup_logging().unwrap();
 
-        let (pty_output_tx, mut pty_output_rx) = mpsc::channel::<BytesFromPTY>(8);
-        let (pty_input_tx, pty_input_rx) = mpsc::channel::<BytesFromSTDIN>(1);
-        let (_, internal_input_rx) = mpsc::channel::<BytesFromSTDIN>(8);
+        let (pty_output_tx, mut pty_output_rx) = mpsc::channel::<bytes::Bytes>(8);
+        let (pty_input_tx, pty_input_rx) = mpsc::channel::<bytes::Bytes>(1);
+        let (_, internal_input_rx) = mpsc::channel::<bytes::Bytes>(8);
         let (protocol_tx, _) = tokio::sync::broadcast::channel(16);
 
         let output_task = tokio::spawn(async move {
             tracing::debug!("TEST: Output listener loop starting...");
-            let mut result: Vec<u8> = vec![];
+            let mut result = bytes::BytesMut::new();
 
             // TODO: don't just rely on test commands sending an `exit` to allow this loop to
             // finish.
@@ -484,16 +457,6 @@ mod test {
         format!("{cat_command} {} {sleep}", path.display())
     }
 
-    fn stdin_bytes(input: &str) -> BytesFromSTDIN {
-        let mut buffer: BytesFromSTDIN = [0; 128];
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "How do I do a range slice with []?"
-        )]
-        buffer[..input.len()].copy_from_slice(input.as_bytes());
-        buffer
-    }
-
     #[tokio::test(flavor = "multi_thread")]
     async fn basic_output() {
         let mut command = crate::tests::helpers::get_canonical_shell();
@@ -523,11 +486,9 @@ mod test {
         #[cfg(target_os = "windows")]
         let exit = "; exit";
         let command = format!("{} {exit}\n", cat_earth_command());
+        let bytes = bytes::Bytes::from(command);
 
-        input_channel
-            .send(stdin_bytes(command.as_ref()))
-            .await
-            .unwrap();
+        input_channel.send(bytes).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
         let result = output_task.await.unwrap();
         eprintln!("{result}");

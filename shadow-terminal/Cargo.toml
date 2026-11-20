@@ -18,6 +18,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true
 schemars.workspace = true
+bytes = "1.11.1"
 
 [dependencies.termwiz]
 package = "tattoy-termwiz"
