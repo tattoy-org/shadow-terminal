@@ -14,11 +14,13 @@
 
 #![expect(clippy::pub_use, reason = "How else are you supposed re-export??")]
 
+pub use bytes;
 pub use termwiz;
 pub use wezterm_term;
 
 pub mod active_terminal;
 pub mod errors;
+
 /// How to send and manage the output of the shadow terminal.
 pub mod output {
     pub mod foreign;

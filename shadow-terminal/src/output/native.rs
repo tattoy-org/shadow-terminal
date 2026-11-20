@@ -96,6 +96,10 @@ pub struct ScreenDiff {
 }
 
 impl std::fmt::Debug for SurfaceDiff {
+    #[expect(
+        clippy::min_ident_chars,
+        reason = "The `f` is in std lib trait definition"
+    )]
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let info = match self {
@@ -127,6 +131,10 @@ pub enum CompleteSurface {
 }
 
 impl std::fmt::Debug for CompleteSurface {
+    #[expect(
+        clippy::min_ident_chars,
+        reason = "The `f` is in std lib trait definition"
+    )]
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let info = match self {
